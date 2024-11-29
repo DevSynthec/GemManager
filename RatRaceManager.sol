@@ -27,7 +27,7 @@ contract GemManager is ReentrancyGuard {
     mapping(address => WithdrawalInfo) public withdrawalInfo;
 
     bytes32 public constant PURCHASE_TYPEHASH = keccak256("Purchase(address user,uint256 gemCount,uint256 nonce,bool deposit)");
-    bytes32 public constant DOMAIN_SEPARATOR = 0x345437aa448a600dcf0666f07c22d486a78c2b0d137f777d8db1aebe38f255fd;
+    bytes32 public DOMAIN_SEPARATOR;
 
     event GemsPurchased(address indexed buyer, uint256 gemCount, uint256 amountInETH);
     event EtherClaimed(address indexed claimer, uint256 gemCount, uint256 amountInETH);
@@ -63,6 +63,18 @@ contract GemManager is ReentrancyGuard {
         claimerMultiplier = _claimerMultiplier;
         maxWithdrawalPerDay = _maxWithdrawalPerDay;
         gameFeePercent = _gameFeePercent;
+        // Calcul dynamique du DOMAIN_SEPARATOR
+        DOMAIN_SEPARATOR = keccak256(
+            abi.encode(
+                keccak256(
+                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                ),
+                keccak256(bytes("GemManager")), // Nom du domaine
+                keccak256(bytes("1")),          // Version du domaine
+                block.chainid,                  // ID de la blockchain actuelle
+                address(this)                   // Adresse du contrat déployé
+            )
+        );
     }
 
     function setMaxWithdrawalPerDay(uint256 _newLimit) external {
