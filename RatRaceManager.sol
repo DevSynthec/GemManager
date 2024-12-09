@@ -27,11 +27,13 @@ contract GemManager is ReentrancyGuard {
     mapping(address => WithdrawalInfo) public withdrawalInfo;
 
     bytes32 public constant PURCHASE_TYPEHASH = keccak256("Purchase(address user,uint256 gemCount,uint256 nonce,bool deposit)");
-    bytes32 public DOMAIN_SEPARATOR;
+    bytes32 public constant DOMAIN_SEPARATOR = 0x345437aa448a600dcf0666f07c22d486a78c2b0d137f777d8db1aebe38f255fd;
 
     event GemsPurchased(address indexed buyer, uint256 gemCount, uint256 amountInETH);
     event EtherClaimed(address indexed claimer, uint256 gemCount, uint256 amountInETH);
     event GemsFundedByMarketing(address indexed marketingWallet, uint256 amountInETH, uint256 gemCount);
+
+
 
     constructor(
         address _backendHashKey, 
@@ -64,17 +66,6 @@ contract GemManager is ReentrancyGuard {
         maxWithdrawalPerDay = _maxWithdrawalPerDay;
         gameFeePercent = _gameFeePercent;
         // Calcul dynamique du DOMAIN_SEPARATOR
-        DOMAIN_SEPARATOR = keccak256(
-            abi.encode(
-                keccak256(
-                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-                ),
-                keccak256(bytes("GemManager")), // Nom du domaine
-                keccak256(bytes("1")),          // Version du domaine
-                block.chainid,                  // ID de la blockchain actuelle
-                address(this)                   // Adresse du contrat déployé
-            )
-        );
     }
 
     function setMaxWithdrawalPerDay(uint256 _newLimit) external {
@@ -163,36 +154,30 @@ contract GemManager is ReentrancyGuard {
         address signer = hash.recover(_signature);
         require(signer == backendHashKey, "Invalid signature");
 
-        return signer;
+        return _user;
     }
 
     function _updateDailyLimit(address user, uint256 amountInETH) internal {
     WithdrawalInfo storage info = withdrawalInfo[user];
 
-    // Calculer une seule fois le début de la période courante
     uint256 currentPeriodStart = block.timestamp - (block.timestamp % 1 days);
 
-    // Réinitialiser les retraits si la période actuelle a changé
     if (info.lastPeriodStart < currentPeriodStart) {
         info.withdrawnInCurrentPeriod = 0;
         info.lastPeriodStart = currentPeriodStart;
     }
 
-    // Définir la limite effective (avec multiplicateur si c'est le wallet du claimer)
     uint256 effectiveLimit = (user == claimerWallet) 
         ? maxWithdrawalPerDay * claimerMultiplier 
         : maxWithdrawalPerDay;
 
-    // Vérifier que le retrait ne dépasse pas la limite quotidienne
     require(
         info.withdrawnInCurrentPeriod + amountInETH <= effectiveLimit,
         "Daily withdrawal limit exceeded"
     );
 
-    // Vérifier que le contrat dispose des fonds suffisants
     require(address(this).balance >= amountInETH, "Insufficient contract balance");
 
-    // Mettre à jour le montant retiré pour cette période
     info.withdrawnInCurrentPeriod += amountInETH;
 }
 
