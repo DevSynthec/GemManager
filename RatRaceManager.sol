@@ -27,7 +27,7 @@ contract GemManager is ReentrancyGuard {
     mapping(address => WithdrawalInfo) public withdrawalInfo;
 
     bytes32 public constant PURCHASE_TYPEHASH = keccak256("Purchase(address user,uint256 gemCount,uint256 nonce,bool deposit)");
-    bytes32 public DOMAIN_SEPARATOR;
+    bytes32 public constant DOMAIN_SEPARATOR = 0x7fe5fe5eb8d24e8636327f90102097167d5935c8ae8003e85024fdacd152ad03;
 
     event GemsPurchased(address indexed buyer, uint256 gemCount, uint256 amountInETH);
     event EtherClaimed(address indexed claimer, uint256 gemCount, uint256 amountInETH);
@@ -55,20 +55,7 @@ contract GemManager is ReentrancyGuard {
         require(_claimerMultiplier > 0, "Claimer multiplier must be greater than 0");
         require(_maxWithdrawalPerDay > 0, "Max withdrawal per day must be greater than 0");
         require(_gameFeePercent > 0, "Game fee percent must be greater than 0");
-        
-        // Calcul dynamique du DOMAIN_SEPARATOR
-        DOMAIN_SEPARATOR = keccak256(
-            abi.encode(
-                keccak256(
-                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-                ),
-                keccak256(bytes("GemManager")), // Nom du domaine
-                keccak256(bytes("1")),          // Version du domaine
-                block.chainid,                  // ID de la blockchain actuelle
-                address(this)                   // Adresse du contrat déployé
-            )
-        );
-    }
+
         backendHashKey = _backendHashKey;
         ethPerGem = _ethPerGem;
         gameFeeWallet = _gameFeeWallet;
@@ -117,7 +104,8 @@ contract GemManager is ReentrancyGuard {
 
         emit GemsPurchased(msg.sender, gemCount, totalCostInETH);
 
-        require(payable(gameFeeWallet).send(gameFee), "Transfer to game fee wallet failed");
+        (bool success, ) = payable(gameFeeWallet).call{gas: 21000, value: gameFee}("");
+        require(success, "Transfer to game fee wallet failed");
 
         if (msg.value > totalCostInETH + gameFee) {
             require(payable(msg.sender).send(msg.value - (totalCostInETH + gameFee)), "Refund failed");
@@ -145,15 +133,18 @@ contract GemManager is ReentrancyGuard {
         require(payable(msg.sender).send(amountInETH), "Transfer of ETH failed");
     }
 
-    function marketingDepositGems(uint256 gemCount) external payable {
-        require(msg.sender == marketingWallet, "Only marketing wallet can add funds");
-        require(gemCount > 0, "Gem count must be greater than 0");
+function marketingDepositGems(uint256 gemCount) external payable {
+    require(msg.sender == marketingWallet, "Only marketing wallet can add funds");
+    require(gemCount > 0, "Gem count must be greater than 0");
 
-        uint256 requiredEthAmount = gemCount * ethPerGem;
-        require(msg.value == requiredEthAmount, "Incorrect ETH amount sent");
+    // Calculate the required ETH amount based on gem count
+    uint256 requiredEthAmount = gemCount * ethPerGem;
 
-        emit GemsFundedByMarketing(msg.sender, msg.value, gemCount);
-    }
+    // Ensure the sent ETH matches the required ETH amount
+    require(msg.value == requiredEthAmount, "Incorrect ETH amount sent");
+
+    emit GemsFundedByMarketing(msg.sender, msg.value, gemCount);
+}
 
     function _verifySignature(
         bytes memory _signature, 
